@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生產效率紀錄器</title>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --danger: #FF3B30;
+            --success: #34C759;
+            --warning: #FF9500;
+            --dark: #1C1C1E;
+            --light: #F2F2F7;
+        }
+        body { font-family: -apple-system, sans-serif; background: #f2f2f7; padding: 15px; margin: 0; display: flex; flex-direction: column; align-items: center; }
+        .card { width: 100%; max-width: 480px; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.05); margin-bottom: 15px; box-sizing: border-box; }
+        h3 { margin: 0 0 10px 0; color: #8e8e93; font-size: 0.85rem; letter-spacing: 1px; }
+        
+        /* 1. 總時間與當前時間 */
+        .time-header { display: flex; justify-content: space-between; align-items: baseline; }
+        .timer-big { font-size: 2.2rem; font-family: monospace; font-weight: bold; color: var(--primary); }
+        .current-clock { font-size: 1rem; color: #666; font-family: monospace; }
+
+        /* 2. 停機紀錄區 */
+        .downtime-box { border-top: 4px solid var(--danger); }
+        .timer-mid { font-size: 2.5rem; font-family: monospace; color: var(--danger); text-align: center; margin: 10px 0; font-weight: bold; }
+        .reason-input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 10px; box-sizing: border-box; font-size: 1rem; }
+        
+        /* 3. 計數器區 */
+        .counter-box { border-top: 4px solid var(--warning); text-align: center; }
+        .counter-val { font-size: 3rem; font-weight: bold; margin: 10px 0; }
+
+        /* 按鈕樣式 */
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        button { padding: 14px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 1rem; }
+        button:active { transform: scale(0.96); }
+        .btn-blue { background: var(--primary); color: white; }
+        .btn-red { background: var(--danger); color: white; }
+        .btn-green { background: var(--success); color: white; }
+        .btn-gray { background: #e5e5ea; color: var(--dark); }
+        .btn-orange { background: var(--warning); color: white; width: 100%; font-size: 1.2rem; }
+        .btn-export { background: var(--dark); color: white; width: 100%; margin-top: 15px; }
+        button:disabled { opacity: 0.3; }
+
+        /* 數據統計 */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .stat-item { background: #f8f9fa; padding: 10px; border-radius: 10px; text-align: center; }
+        .stat-label { font-size: 0.7rem; color: #666; margin-bottom: 4px; }
+        .stat-val { font-size: 0.9rem; font-weight: bold; }
+
+        /* 列表樣式 */
+        #log-list { list-style: none; padding: 0; margin-top: 15px; border-top: 1px solid #eee; max-height: 250px; overflow-y: auto; font-size: 0.8rem; }
+        .log-entry { padding: 10px 0; border-bottom: 1px solid #f2f2f7; line-height: 1.4; }
+        .tag { padding: 2px 5px; border-radius: 4px; font-size: 0.7rem; margin-right: 5px; color: white; }
+        .tag-our { background: var(--danger); }
+        .tag-other { background: var(--primary); }
+        .tag-count { background: var(--warning); }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="time-header">
+        <h3>總運轉時間</h3>
+        <div class="current-clock" id="currentClock">00:00:00</div>
+    </div>
+    <div class="timer-big" id="shiftTimer">00:00:00</div>
+    <div class="btn-group">
+        <button id="shiftStartBtn" class="btn-blue">開始總運轉</button>
+        <button id="shiftEndBtn" class="btn-gray" disabled>結束總運轉</button>
+    </div>
+</div>
+
+<div class="card downtime-box" id="downArea" style="opacity:0.4; pointer-events:none;">
+    <h3>停機事件紀錄</h3>
+    <div class="timer-mid" id="downTimer">00:00</div>
+    
+    <input type="text" id="downReason" class="reason-input" placeholder="請輸入停機原因 (選填)">
+    
+    <div style="display:flex; justify-content:space-around; margin-bottom:15px;">
+        <label><input type="radio" name="resp" value="我方" checked> 我方責任</label>
+        <label><input type="radio" name="resp" value="其他"> 其他責任</label>
+    </div>
+
+    <div class="btn-group">
+        <button id="downStartBtn" class="btn-red">發生停機</button>
+        <button id="downEndBtn" class="btn-green" disabled>恢復生產</button>
+    </div>
+</div>
+
+<div class="card counter-box" id="countArea" style="opacity:0.4; pointer-events:none;">
+    <h3>割紙不良計數 (Count)</h3>
+    <div class="counter-val" id="counterDisplay">0</div>
+    <button id="countBtn" class="btn-orange">點擊計數 (+1)</button>
+</div>
+
+<div class="card">
+    <div class="stats-grid">
+        <div class="stat-item">
+            <div class="stat-label">我方停機總計</div>
+            <div id="ourDownLabel" class="stat-val">00:00</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">全部停機總計</div>
+            <div id="totalDownLabel" class="stat-val">00:00</div>
+        </div>
+    </div>
+    <button class="btn-export" onclick="exportReport()">匯出整合報表 (Excel/CSV)</button>
+    <ul id="log-list"></ul>
+    <center><button style="background:none; color:red; font-size:0.7rem; margin-top:15px; border:1px solid red; padding:5px 10px; border-radius:5px;" onclick="clearData()">清空所有快取資料</button></center>
+</div>
+
+<script>
+    // 資料結構
+    let logs = JSON.parse(localStorage.getItem('mega_factory_logs')) || [];
+    let count = parseInt(localStorage.getItem('mega_factory_count')) || 0;
+    let shiftData = JSON.parse(localStorage.getItem('mega_shift_meta')) || { isActive: false, startTime: null };
+
+    let shiftInterval, downInterval, clockInterval;
+    let downStart = null;
+
+    // --- 初始化執行 ---
+    updateClock();
+    clockInterval = setInterval(updateClock, 1000);
+    renderUI();
+    if(shiftData.isActive) resumeShift();
+
+    // 1. 即時時鐘
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('currentClock').textContent = now.getHours().toString().padStart(2,'0') + ":" + 
+                                                             now.getMinutes().toString().padStart(2,'0') + ":" + 
+                                                             now.getSeconds().toString().padStart(2,'0');
+    }
+
+    // 2. 總運轉計時
+    document.getElementById('shiftStartBtn').onclick = function() {
+        if(!confirm("確定要開始今日運轉計時？")) return;
+        shiftData.isActive = true;
+        shiftData.startTime = Date.now();
+        localStorage.setItem('mega_shift_meta', JSON.stringify(shiftData));
+        resumeShift();
+    };
+
+    function resumeShift() {
+        document.getElementById('shiftStartBtn').disabled = true;
+        document.getElementById('shiftEndBtn').disabled = false;
+        document.querySelectorAll('#downArea, #countArea').forEach(el => {
+            el.style.opacity = "1"; el.style.pointerEvents = "auto";
+        });
+        
+        shiftInterval = setInterval(() => {
+            let diff = Date.now() - shiftData.startTime;
+            document.getElementById('shiftTimer').textContent = formatFullTime(diff);
+        }, 1000);
+    }
+
+    document.getElementById('shiftEndBtn').onclick = function() {
+        if(!confirm("確定要結束今日運轉？這將鎖定所有紀錄。")) return;
+        clearInterval(shiftInterval);
+        shiftData.isActive = false;
+        localStorage.setItem('mega_shift_meta', JSON.stringify(shiftData));
+        location.reload();
+    };
+
+    // 3. 停機計時 (分:秒)
+    function formatMinSec(ms) {
+        let s = Math.floor(ms / 1000);
+        let m = Math.floor(s / 60);
+        let sec = s % 60;
+        return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
+    }
+
+    function formatFullTime(ms) {
+        let s = Math.floor(ms / 1000);
+        let h = Math.floor(s / 3600);
+        let m = Math.floor((s % 3600) / 60);
+        let sec = s % 60;
+        return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
+    }
+
+    document.getElementById('downStartBtn').onclick = function() {
+        downStart = Date.now();
+        this.disabled = true;
+        document.getElementById('downEndBtn').disabled = false;
+        document.getElementById('shiftEndBtn').disabled = true;
+        downInterval = setInterval(() => {
+            document.getElementById('downTimer').textContent = formatMinSec(Date.now() - downStart);
+        }, 1000);
+    };
+
+    document.getElementById('downEndBtn').onclick = function() {
+        clearInterval(downInterval);
+        const now = Date.now();
+        const duration = now - downStart;
+        const resp = document.querySelector('input[name="resp"]:checked').value;
+        const reason = document.getElementById('downReason').value || "未註明原因";
+
+        logs.unshift({
+            type: 'DOWN',
+            timestamp: new Date().toLocaleTimeString(),
+            duration: duration,
+            resp: resp,
+            note: reason
+        });
+
+        saveData();
+        this.disabled = true;
+        document.getElementById('downStartBtn').disabled = false;
+        document.getElementById('shiftEndBtn').disabled = false;
+        document.getElementById('downTimer').textContent = "00:00";
+        document.getElementById('downReason').value = "";
+        renderUI();
+    };
+
+    // 4. 計數器
+    document.getElementById('countBtn').onclick = function() {
+        count++;
+        logs.unshift({
+            type: 'COUNT',
+            timestamp: new Date().toLocaleTimeString(),
+            val: count,
+            note: '手動計數'
+        });
+        saveData();
+        renderUI();
+    };
+
+    // 5. 介面更新與儲存
+    function saveData() {
+        localStorage.setItem('mega_factory_logs', JSON.stringify(logs));
+        localStorage.setItem('mega_factory_count', count);
+    }
+
+    function renderUI() {
+        document.getElementById('counterDisplay').textContent = count;
+        const list = document.getElementById('log-list');
+        list.innerHTML = '';
+        
+        let totalMs = 0;
+        let ourMs = 0;
+
+        logs.forEach(log => {
+            const li = document.createElement('li');
+            li.className = 'log-entry';
+            if(log.type === 'DOWN') {
+                totalMs += log.duration;
+                if(log.resp === '我方') ourMs += log.duration;
+                const tag = log.resp === '我方' ? 'tag-our' : 'tag-other';
+                li.innerHTML = `<span class="tag ${tag}">${log.resp}停機</span> [${log.timestamp}] 時長: ${formatMinSec(log.duration)}<br><small>原因: ${log.note}</small>`;
+            } else {
+                li.innerHTML = `<span class="tag tag-count">計數</span> [${log.timestamp}] 累計次數: ${log.val}`;
+            }
+            list.appendChild(li);
+        });
+
+        document.getElementById('totalDownLabel').textContent = formatMinSec(totalMs);
+        document.getElementById('ourDownLabel').textContent = formatMinSec(ourMs);
+    }
+
+    // 6. 報表匯出 (CSV)
+    function exportReport() {
+        if(logs.length === 0) return alert("尚無資料");
+        let csv = "\uFEFF類別,時間點,時長/數值,責任歸屬,原因/備註\n";
+        logs.forEach(l => {
+            if(l.type === 'DOWN') {
+                csv += `停機,${l.timestamp},${Math.round(l.duration/1000)}秒,${l.resp},${l.note}\n`;
+            } else {
+                csv += `割紙不良計數,${l.timestamp},${l.val},-,${l.note}\n`;
+            }
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `生產報表_${new Date().toLocaleDateString()}.csv`;
+        link.click();
+    }
+
+    function clearData() {
+        if(confirm("確定永久清除所有數據？")) {
+            localStorage.clear();
+            location.reload();
+        }
+    }
+</script>
+
+</body>
+</html>
