@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>生產效率暨稼動率監控</title>
+    <title>生產效率暨稼動率記錄器</title>
     <style>
         :root {
             --primary: #007AFF;
@@ -11,21 +11,26 @@
             --success: #34C759;
             --warning: #FF9500;
             --dark: #1C1C1E;
+            --info: #5856D6;
         }
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; padding: 15px; margin: 0; display: flex; flex-direction: column; align-items: center; }
         .card { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); margin-bottom: 15px; box-sizing: border-box; }
         h3 { margin: 0 0 5px 0; color: #8e8e93; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
         
-        /* 稼動率大儀表 */
+        /* 稼動率儀表 */
         .utilization-box { background: var(--dark); color: white; text-align: center; border-bottom: 5px solid var(--success); }
         .util-val { font-size: 3.5rem; font-weight: 900; color: var(--success); margin: 5px 0; }
         .util-label { font-size: 0.9rem; color: #aaa; }
 
-        /* 總運行計時 (放大) */
+        /* 總運行計時 */
         .timer-huge { font-size: 4rem; font-family: 'Courier New', monospace; font-weight: 900; color: var(--dark); text-align: center; margin: 10px 0; line-height: 1; }
         .current-info { text-align: center; font-size: 0.9rem; color: var(--primary); margin-bottom: 10px; }
 
-        /* 按鈕與輸入 */
+        /* 停機區塊 */
+        .downtime-box { border-left: 6px solid var(--danger); }
+        .timer-mid { font-size: 2.5rem; font-family: monospace; color: var(--danger); text-align: center; font-weight: bold; margin: 10px 0; }
+        .reason-input { width: 100%; padding: 14px; border: 2px solid #eee; border-radius: 12px; margin-bottom: 12px; box-sizing: border-box; font-size: 1rem; }
+        
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
         button { padding: 16px; border-radius: 14px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 1.1rem; }
         button:active { transform: scale(0.95); }
@@ -36,17 +41,18 @@
         .btn-orange { background: var(--warning); color: white; width: 100%; }
         .btn-export { background: var(--dark); color: white; width: 100%; margin-top: 20px; }
         
-        .reason-input { width: 100%; padding: 14px; border: 2px solid #eee; border-radius: 12px; margin-bottom: 12px; box-sizing: border-box; font-size: 1rem; }
         button:disabled { opacity: 0.2; }
 
-        /* 統計列表 */
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
-        .stat-item { background: #f8f9fa; padding: 12px; border-radius: 12px; text-align: center; }
-        .stat-label { font-size: 0.7rem; color: #666; }
-        .stat-val { font-size: 1rem; font-weight: 700; }
+        /* 統計統計 */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .stat-item { background: #f8f9fa; padding: 10px; border-radius: 12px; text-align: center; border-bottom: 3px solid #ddd; }
+        .stat-label { font-size: 0.7rem; color: #666; margin-bottom: 3px; }
+        .stat-val { font-size: 0.95rem; font-weight: 700; }
+        .border-our { border-color: var(--danger); }
+        .border-other { border-color: var(--primary); }
 
         #log-list { list-style: none; padding: 0; margin-top: 20px; border-top: 2px solid #f2f2f7; max-height: 250px; overflow-y: auto; }
-        .log-entry { padding: 12px 0; border-bottom: 1px solid #f2f2f7; font-size: 0.85rem; }
+        .log-entry { padding: 12px 0; border-bottom: 1px solid #f2f2f7; font-size: 0.85rem; line-height: 1.4; }
         .tag { padding: 3px 7px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; margin-right: 6px; color: white; }
         .tag-sys { background: #8e8e93; }
         .tag-our { background: var(--danger); }
@@ -56,9 +62,8 @@
 <body>
 
 <div class="card utilization-box">
-    <div class="util-label">即時稼動率 (Availability)</div>
+    <div class="util-label">即時稼動率 (不計入外部停機)</div>
     <div class="util-val" id="utilDisplay">100.0%</div>
-    <div style="font-size: 0.75rem; color: #777;">公式：(總運轉 - 我方停機) / 總運轉</div>
 </div>
 
 <div class="card">
@@ -71,9 +76,9 @@
     </div>
 </div>
 
-<div class="card" id="downArea" style="opacity:0.4; pointer-events:none; border-left: 6px solid var(--danger);">
+<div class="card downtime-box" id="downArea" style="opacity:0.4; pointer-events:none;">
     <h3>停機事件紀錄</h3>
-    <div style="font-size: 2.5rem; font-family: monospace; color: var(--danger); text-align: center; font-weight: bold;" id="downTimer">00:00</div>
+    <div class="timer-mid" id="downTimer">00:00</div>
     <input type="text" id="downReason" class="reason-input" placeholder="請輸入停機原因">
     <div style="display:flex; justify-content:space-around; margin-bottom:15px; font-weight:bold;">
         <label><input type="radio" name="resp" value="我方" checked> 我方責任</label>
@@ -87,25 +92,36 @@
 
 <div class="card">
     <div class="stats-grid">
-        <div class="stat-item">
-            <div class="stat-label">我方停機總時長</div>
+        <div class="stat-item border-our">
+            <div class="stat-label">我方停機累計</div>
             <div id="ourDownLabel" class="stat-val">00:00</div>
         </div>
+        <div class="stat-item border-other">
+            <div class="stat-label">其他停機累計</div>
+            <div id="otherDownLabel" class="stat-val">00:00</div>
+        </div>
         <div class="stat-item">
-            <div class="stat-label">累積生產計數</div>
+            <div class="stat-label">割紙不良次數</div>
             <div id="counterDisplay" class="stat-val">0</div>
         </div>
+        <div class="stat-item">
+            <div class="stat-label">總損失時長</div>
+            <div id="totalLossLabel" class="stat-val">00:00</div>
+        </div>
     </div>
-    <button id="countBtn" class="btn-orange" style="margin-top:10px; padding:10px;" disabled>點擊計數 +1</button>
-    <button class="btn-export" onclick="exportReport()">匯出完整稼動率報表 (CSV)</button>
+    
+    <button id="countBtn" class="btn-orange" style="margin-top:15px;" disabled>點擊計數 +1</button>
+    <button class="btn-export" onclick="exportReport()">匯出對照報表 (CSV)</button>
+    
     <ul id="log-list"></ul>
-    <center><button style="background:none; color:#ff3b30; font-size:0.7rem; margin-top:20px; border:1px solid #ff3b30; padding:4px 8px; border-radius:6px;" onclick="clearData()">清空所有數據</button></center>
+    
+    <center><button style="background:none; color:#ff3b30; font-size:0.7rem; margin-top:25px; border:1px solid #ff3b30; padding:5px 10px; border-radius:8px;" onclick="clearData()">清空所有數據</button></center>
 </div>
 
 <script>
-    let logs = JSON.parse(localStorage.getItem('util_logs')) || [];
-    let count = parseInt(localStorage.getItem('util_count')) || 0;
-    let shiftData = JSON.parse(localStorage.getItem('util_shift_meta')) || { isActive: false, startTime: null, startWallTime: null };
+    let logs = JSON.parse(localStorage.getItem('comp_logs')) || [];
+    let count = parseInt(localStorage.getItem('comp_count')) || 0;
+    let shiftData = JSON.parse(localStorage.getItem('comp_shift_meta')) || { isActive: false, startTime: null, startWallTime: null };
 
     let shiftInterval, downInterval, clockInterval;
     let downStart = null;
@@ -122,7 +138,7 @@
 
     // --- 總運轉 ---
     document.getElementById('shiftStartBtn').onclick = function() {
-        if(!confirm("確定開始總運轉計時？")) return;
+        if(!confirm("確定開始總運轉？")) return;
         shiftData.isActive = true;
         shiftData.startTime = Date.now();
         shiftData.startWallTime = new Date().toLocaleTimeString('zh-TW', { hour12: false });
@@ -137,7 +153,8 @@
         document.getElementById('shiftStartBtn').disabled = true;
         document.getElementById('shiftEndBtn').disabled = false;
         document.getElementById('countBtn').disabled = false;
-        document.querySelectorAll('#downArea').forEach(el => { el.style.opacity = "1"; el.style.pointerEvents = "auto"; });
+        document.getElementById('downArea').style.opacity = "1";
+        document.getElementById('downArea').style.pointerEvents = "auto";
         
         shiftInterval = setInterval(() => {
             let diff = Date.now() - shiftData.startTime;
@@ -147,14 +164,16 @@
 
     document.getElementById('shiftEndBtn').onclick = function() {
         const finalUtil = document.getElementById('utilDisplay').textContent;
-        if(!confirm(`確定結束運轉？\n今日最終稼動率為：${finalUtil}`)) return;
+        const ourTime = document.getElementById('ourDownLabel').textContent;
+        const otherTime = document.getElementById('otherDownLabel').textContent;
         
-        const endWallTime = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+        if(!confirm(`確定結束運轉？\n\n最終稼動率：${finalUtil}\n我方停機：${ourTime}\n其他停機：${otherTime}`)) return;
+        
         logs.unshift({
             type: 'SYSTEM',
             event: '關機',
-            timestamp: endWallTime,
-            note: `結束運行 | 最終稼動率: ${finalUtil}`
+            timestamp: new Date().toLocaleTimeString('zh-TW', { hour12: false }),
+            note: `結束運行 | 稼動率: ${finalUtil} | 我方停機: ${ourTime} | 其他停機: ${otherTime}`
         });
 
         clearInterval(shiftInterval);
@@ -163,28 +182,15 @@
         location.reload();
     };
 
-    // --- 稼動率核心計算 ---
+    // --- 稼動率計算 (只扣除我方) ---
     function calculateUtilization() {
         if(!shiftData.isActive) return;
-        
         let totalRuntimeMs = Date.now() - shiftData.startTime;
         let ourDowntimeMs = 0;
-
-        logs.forEach(l => {
-            if(l.type === 'DOWN' && l.resp === '我方') {
-                ourDowntimeMs += l.duration;
-            }
-        });
-
-        // 避免分母為零或計算尚未開始
+        logs.forEach(l => { if(l.type === 'DOWN' && l.resp === '我方') ourDowntimeMs += l.duration; });
         if(totalRuntimeMs <= 0) return;
-
         let util = ((totalRuntimeMs - ourDowntimeMs) / totalRuntimeMs) * 100;
-        if(util < 0) util = 0; // 防止負數
-
-        document.getElementById('utilDisplay').textContent = util.toFixed(1) + "%";
-        
-        // 視覺反饋：如果稼動率太低變紅色
+        document.getElementById('utilDisplay').textContent = Math.max(0, util).toFixed(1) + "%";
         document.getElementById('utilDisplay').style.color = util < 80 ? '#FF3B30' : '#34C759';
     }
 
@@ -224,7 +230,7 @@
         renderUI();
     };
 
-    // --- 其他功能 ---
+    // --- 計數與輔助 ---
     document.getElementById('countBtn').onclick = function() {
         count++;
         logs.unshift({ type: 'COUNT', timestamp: new Date().toLocaleTimeString('zh-TW', { hour12: false }), val: count });
@@ -246,52 +252,58 @@
     }
 
     function saveData() {
-        localStorage.setItem('util_logs', JSON.stringify(logs));
-        localStorage.setItem('util_count', count);
-        localStorage.setItem('util_shift_meta', JSON.stringify(shiftData));
+        localStorage.setItem('comp_logs', JSON.stringify(logs));
+        localStorage.setItem('comp_count', count);
+        localStorage.setItem('comp_shift_meta', JSON.stringify(shiftData));
     }
 
     function renderUI() {
         document.getElementById('counterDisplay').textContent = count;
         const list = document.getElementById('log-list');
         list.innerHTML = '';
-        let ourMs = 0;
+        let ourMs = 0, otherMs = 0;
 
         logs.forEach(log => {
             const li = document.createElement('li');
             li.className = 'log-entry';
             if(log.type === 'DOWN') {
                 if(log.resp === '我方') ourMs += log.duration;
-                li.innerHTML = `<span class="tag ${log.resp === '我方' ? 'tag-our' : 'tag-other'}">${log.resp}停機</span> 
+                else otherMs += log.duration;
+                
+                const tagClass = log.resp === '我方' ? 'tag-our' : 'tag-other';
+                li.innerHTML = `<span class="tag ${tagClass}">${log.resp}停機</span> 
                                 <strong>${log.start} ~ ${log.end}</strong> (${formatMinSec(log.duration)})<br>
                                 <small>原因: ${log.note}</small>`;
             } else if(log.type === 'SYSTEM') {
-                li.innerHTML = `<span class="tag tag-sys">系統</span> <strong>${log.event}: ${log.timestamp}</strong> <small>${log.note || ''}</small>`;
+                li.innerHTML = `<span class="tag tag-sys">系統</span> <strong>${log.event}: ${log.timestamp}</strong> <br><small>${log.note || ''}</small>`;
             } else {
-                li.innerHTML = `<span class="tag tag-count">計數</span> [${log.timestamp}] 累計: ${log.val}`;
+                li.innerHTML = `<span class="tag tag-sys" style="background:var(--warning)">計數</span> [${log.timestamp}] 累計: ${log.val}`;
             }
             list.appendChild(li);
         });
+
         document.getElementById('ourDownLabel').textContent = formatMinSec(ourMs);
+        document.getElementById('otherDownLabel').textContent = formatMinSec(otherMs);
+        document.getElementById('totalLossLabel').textContent = formatMinSec(ourMs + otherMs);
         calculateUtilization();
     }
 
     function exportReport() {
         if(logs.length === 0) return alert("尚無資料");
-        let csv = "\uFEFF類別,開始時間,結束時間,數據/時長,責任,原因/備註\n";
+        let csv = "\uFEFF類別,開始時間,結束時間,時長(秒),責任歸屬,備註\n";
         logs.forEach(l => {
             if(l.type === 'DOWN') {
-                csv += `停機,${l.start},${l.end},${Math.round(l.duration/1000)}秒,${l.resp},${l.note}\n`;
+                csv += `停機紀錄,${l.start},${l.end},${Math.round(l.duration/1000)},${l.resp},${l.note}\n`;
             } else if(l.type === 'SYSTEM') {
-                csv += `系統,${l.timestamp},-,${l.event},-,${l.note}\n`;
+                csv += `系統事件,${l.timestamp},-,0,系統,${l.note}\n`;
             } else {
-                csv += `計數,${l.timestamp},-,${l.val},-,-\n`;
+                csv += `計數紀錄,${l.timestamp},-,${l.val},計數器,-\n`;
             }
         });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `稼動率報告_${new Date().toLocaleDateString()}.csv`;
+        link.download = `生產報告_含外部原因_${new Date().toLocaleDateString()}.csv`;
         link.click();
     }
 
