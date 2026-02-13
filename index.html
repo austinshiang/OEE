@@ -297,7 +297,7 @@
             } else if(l.type === 'SYSTEM') {
                 csv += `系統事件,${l.timestamp},-,0,系統,${l.note}\n`;
             } else {
-                csv += `計數紀錄,${l.timestamp},-,${l.val},計數器,-\n`;
+                csv += `割紙不良紀錄,${l.timestamp},-,${l.val},共計次數,-\n`;
             }
         });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
